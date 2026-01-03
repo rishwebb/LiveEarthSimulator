@@ -2,27 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>JARVIS: Hyper-Apex AR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS: Responsive Apex AR</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; }
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
         #input_video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
         #biometric_canvas { position: absolute; width: 100vw; height: 100vh; z-index: 5; transform: scaleX(-1); pointer-events: none; }
         #three_canvas { position: absolute; top: 0; left: 0; z-index: 10; pointer-events: none; }
+        
+        /* Mobile-friendly UI sizing */
         #status { 
-            position: absolute; top: 40px; left: 40px; z-index: 100;
+            position: absolute; top: 20px; left: 20px; z-index: 100;
             color: #00f0ff; font-family: 'Courier New', monospace; font-weight: bold;
-            text-shadow: 0 0 20px #00f0ff; border-left: 5px solid #00f0ff; padding-left: 20px;
+            text-shadow: 0 0 10px #00f0ff; border-left: 3px solid #00f0ff; padding-left: 10px;
+            font-size: 12px; max-width: 60vw;
         }
         #resize_ui {
-            position: absolute; top: 40px; right: 40px; z-index: 100;
-            color: #ff3333; font-family: 'Courier New', monospace; font-size: 18px;
-            padding: 10px; border: 2px solid #ff3333; display: none;
-            background: rgba(0,0,0,0.5); text-shadow: 0 0 10px #ff3333;
+            position: absolute; top: 20px; right: 20px; z-index: 100;
+            color: #ff3333; font-family: 'Courier New', monospace; font-size: 14px;
+            padding: 8px; border: 1px solid #ff3333; display: none;
+            background: rgba(0,0,0,0.5); text-shadow: 0 0 5px #ff3333;
         }
     </style>
 </head>
 <body>
-    <div id="status">INITIATING HYPER-APEX OVERRIDE...</div>
+    <div id="status">INITIALIZING RESPONSIVE INTERFACE...</div>
     <div id="resize_ui">RESIZE ACTIVATED</div>
     <video id="input_video" autoplay playsinline></video>
     <canvas id="biometric_canvas"></canvas>
@@ -43,26 +47,39 @@
         let rotationMomentum = 0.0015;
         let prevHand2X = null;
         let activeHandLabel = null;
-        
         let pinchStartTime = null;
         let isResizeMode = false;
         let currentScale = 1.0;
 
-        // 1. ENGINE SETUP
+        // 1. DYNAMIC RESPONSIVE ENGINE
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ 
             canvas: document.getElementById('three_canvas'),
             antialias: true, alpha: true, logarithmicDepthBuffer: true
         });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio > 1 ? 2 : 1);
+        
+        // Mobile-aware scaling function
+        function updateScreenSize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            // Calculate Responsive Base Scale
+            // If portrait (mobile), we reduce the multiplier to fit the screen width
+            window.isMobile = width < height;
+            window.responsiveMultiplier = isMobile ? (width / height) * 1.8 : 1.0;
+        }
+        updateScreenSize();
+        window.addEventListener('resize', updateScreenSize);
 
         const vFOV = (camera.fov * Math.PI) / 180;
         const visibleHeight = 2 * Math.tan(vFOV / 2) * 10;
-        const visibleWidth = visibleHeight * camera.aspect;
+        const visibleWidth = visibleHeight * (window.innerWidth / window.innerHeight);
 
-        // 2. ULTRA-HD ASSETS
+        // 2. ASSETS
         const earthGroup = new THREE.Group();
         earthGroup.visible = false; 
         scene.add(earthGroup);
@@ -74,17 +91,19 @@
             bumpMap: loader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg'),
             bumpScale: 0.08, shininess: 50 
         });
-        const earth = new THREE.Mesh(new THREE.SphereGeometry(2.4, 256, 256), earthMat);
+        
+        // Base geometry stays consistent; we scale the GROUP for responsiveness
+        const earth = new THREE.Mesh(new THREE.SphereGeometry(2.3, 128, 128), earthMat);
         earthGroup.add(earth);
 
         const clouds = new THREE.Mesh(
-            new THREE.SphereGeometry(2.47, 128, 128),
-            new THREE.MeshPhongMaterial({ map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'), transparent: true, opacity: 0.85 })
+            new THREE.SphereGeometry(2.35, 128, 128),
+            new THREE.MeshPhongMaterial({ map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'), transparent: true, opacity: 0.8 })
         );
         earthGroup.add(clouds);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-        const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+        const sun = new THREE.DirectionalLight(0xffffff, 2.0);
         sun.position.set(5, 3, 5);
         scene.add(sun);
         camera.position.z = 10;
@@ -99,7 +118,7 @@
 
                 results.multiHandLandmarks.forEach((landmarks, index) => {
                     const label = results.multiHandedness[index].label;
-                    drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', lineWidth: 2, radius: 4});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', lineWidth: 1.5, radius: isMobile ? 2 : 4});
                     
                     if (activeHandLabel === null) activeHandLabel = label;
                     if (label === activeHandLabel) h1 = landmarks;
@@ -113,10 +132,19 @@
                     if (distToFist > 0.18) {
                         earthGroup.visible = true;
                         status.innerText = "BIOMETRIC LOCK: 100%";
-                        const tx = (mid.x - 0.5) * -visibleWidth;
+                        
+                        // Recalculate aspect in case of rotation
+                        const currentVisWidth = visibleHeight * (window.innerWidth / window.innerHeight);
+                        const tx = (mid.x - 0.5) * -currentVisWidth;
                         const ty = (mid.y - 0.5) * -visibleHeight;
-                        // Distance halved: Offset changed from 6.0 to 3.0
-                        earthGroup.position.lerp(new THREE.Vector3(tx, ty + 3.0, 0), 0.15);
+                        
+                        // Apply mobile-aware lift and responsive scaling
+                        earthGroup.position.lerp(new THREE.Vector3(tx, ty + (isMobile ? 2.0 : 3.0), 0), 0.15);
+                        
+                        // Force Earth to fit mobile screen ratio
+                        if (!isResizeMode) {
+                            earthGroup.scale.lerp(new THREE.Vector3(responsiveMultiplier, responsiveMultiplier, responsiveMultiplier), 0.1);
+                        }
                     } else {
                         earthGroup.visible = false;
                         status.innerText = "ANCHOR FIST: STANDBY";
@@ -127,30 +155,27 @@
                     const thumbTip = h2[4], indexTip = h2[8], mid2 = h2[9];
                     const rawDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
                     
-                    // 1 SEC PINCH ACTIVATION
-                    if (rawDist < 0.04) {
+                    if (rawDist < 0.05) {
                         if (pinchStartTime === null) pinchStartTime = Date.now();
                         if (Date.now() - pinchStartTime > 1000) {
                             isResizeMode = true;
                             resizeUI.style.display = 'block';
-                            resizeUI.style.color = '#00f0ff';
-                            resizeUI.style.borderColor = '#00f0ff';
                         }
                     } else if (!isResizeMode) {
                         pinchStartTime = null;
                     }
 
-                    // RESIZE MODE: Disable Slapping here
                     if (isResizeMode) {
-                        currentScale = THREE.MathUtils.lerp(currentScale, rawDist * 10.0, 0.1);
-                        earthGroup.scale.setScalar(THREE.MathUtils.clamp(currentScale, 0.2, 3.8));
+                        // Resizing is relative to the responsive multiplier
+                        let scaleFactor = isMobile ? 12.0 : 10.0;
+                        currentScale = THREE.MathUtils.lerp(currentScale, rawDist * scaleFactor, 0.1);
+                        const finalS = THREE.MathUtils.clamp(currentScale, 0.2, 4.0);
+                        earthGroup.scale.setScalar(finalS);
                     } else {
-                        // SLAP MODE: Only works if not pinching
                         const curX = mid2.x;
                         if (prevHand2X !== null) {
                             const deltaX = curX - prevHand2X;
-                            // Strict velocity check to distinguish from a slow pinch movement
-                            if (Math.abs(deltaX) > 0.015) rotationMomentum += deltaX * 0.45;
+                            if (Math.abs(deltaX) > 0.015) rotationMomentum += deltaX * (isMobile ? 0.6 : 0.45);
                         }
                         prevHand2X = curX;
                     }
@@ -159,18 +184,22 @@
                     pinchStartTime = null;
                     resizeUI.style.display = 'none';
                     prevHand2X = null;
-                    earthGroup.scale.lerp(new THREE.Vector3(1,1,1), 0.08);
                 }
             } else {
                 earthGroup.visible = false;
                 activeHandLabel = null;
-                status.innerText = "SEARCHING...";
+                status.innerText = "SEARCHING FOR BIOMETRICS...";
             }
             canvasCtx.restore();
         }
 
         const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.85, minTrackingConfidence: 0.85 });
+        hands.setOptions({ 
+            maxNumHands: 2, 
+            modelComplexity: isMobile ? 0 : 1, // Use simpler model on mobile for speed
+            minDetectionConfidence: 0.75, 
+            minTrackingConfidence: 0.75 
+        });
         hands.onResults(onResults);
 
         new Camera(videoElement, {
@@ -184,7 +213,7 @@
         function animate() {
             requestAnimationFrame(animate);
             earth.rotation.y += rotationMomentum;
-            clouds.rotation.y += rotationMomentum * 1.15;
+            clouds.rotation.y += rotationMomentum * 1.1;
             rotationMomentum *= 0.985;
             renderer.render(scene, camera);
         }
