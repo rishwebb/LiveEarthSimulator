@@ -3,19 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS: Responsive Apex AR</title>
+    <title>JARVIS: Mobile-Optimized Apex</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
         #input_video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
         #biometric_canvas { position: absolute; width: 100vw; height: 100vh; z-index: 5; transform: scaleX(-1); pointer-events: none; }
         #three_canvas { position: absolute; top: 0; left: 0; z-index: 10; pointer-events: none; }
-        
-        /* Mobile-friendly UI sizing */
         #status { 
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            color: #00f0ff; font-family: 'Courier New', monospace; font-weight: bold;
+            color: #00f0ff; font-family: 'Courier New', monospace; font-size: 12px;
             text-shadow: 0 0 10px #00f0ff; border-left: 3px solid #00f0ff; padding-left: 10px;
-            font-size: 12px; max-width: 60vw;
         }
         #resize_ui {
             position: absolute; top: 20px; right: 20px; z-index: 100;
@@ -26,7 +23,7 @@
     </style>
 </head>
 <body>
-    <div id="status">INITIALIZING RESPONSIVE INTERFACE...</div>
+    <div id="status">INITIATING MOBILE-OPTIMIZED AR...</div>
     <div id="resize_ui">RESIZE ACTIVATED</div>
     <video id="input_video" autoplay playsinline></video>
     <canvas id="biometric_canvas"></canvas>
@@ -51,35 +48,33 @@
         let isResizeMode = false;
         let currentScale = 1.0;
 
-        // 1. DYNAMIC RESPONSIVE ENGINE
+        // 1. DYNAMIC MOBILE ENGINE
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ 
             canvas: document.getElementById('three_canvas'),
             antialias: true, alpha: true, logarithmicDepthBuffer: true
         });
-        
-        // Mobile-aware scaling function
-        function updateScreenSize() {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            renderer.setSize(width, height);
-            camera.aspect = width / height;
+
+        function updateScreen() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
             camera.updateProjectionMatrix();
 
-            // Calculate Responsive Base Scale
-            // If portrait (mobile), we reduce the multiplier to fit the screen width
-            window.isMobile = width < height;
-            window.responsiveMultiplier = isMobile ? (width / height) * 1.8 : 1.0;
+            // --- MOBILE SIZE FIX ---
+            // If screen is taller than wide, reduce the Earth's base scale to fit
+            window.isMobile = w < h;
+            window.baseScale = isMobile ? 0.65 : 1.0; 
         }
-        updateScreenSize();
-        window.addEventListener('resize', updateScreenSize);
+        updateScreen();
+        window.addEventListener('resize', updateScreen);
 
         const vFOV = (camera.fov * Math.PI) / 180;
         const visibleHeight = 2 * Math.tan(vFOV / 2) * 10;
-        const visibleWidth = visibleHeight * (window.innerWidth / window.innerHeight);
 
-        // 2. ASSETS
+        // 2. ULTRA-HD ASSETS
         const earthGroup = new THREE.Group();
         earthGroup.visible = false; 
         scene.add(earthGroup);
@@ -91,35 +86,31 @@
             bumpMap: loader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg'),
             bumpScale: 0.08, shininess: 50 
         });
-        
-        // Base geometry stays consistent; we scale the GROUP for responsiveness
         const earth = new THREE.Mesh(new THREE.SphereGeometry(2.3, 128, 128), earthMat);
         earthGroup.add(earth);
 
         const clouds = new THREE.Mesh(
-            new THREE.SphereGeometry(2.35, 128, 128),
-            new THREE.MeshPhongMaterial({ map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'), transparent: true, opacity: 0.8 })
+            new THREE.SphereGeometry(2.36, 128, 128),
+            new THREE.MeshPhongMaterial({ map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'), transparent: true, opacity: 0.85 })
         );
         earthGroup.add(clouds);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-        const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+        const sun = new THREE.DirectionalLight(0xffffff, 2.2);
         sun.position.set(5, 3, 5);
         scene.add(sun);
         camera.position.z = 10;
 
-        // 3. PRECISION GESTURE LOGIC
+        // 3. GESTURE LOGIC (Optimized for Screen Ratios)
         function onResults(results) {
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 let h1 = null, h2 = null;
-
                 results.multiHandLandmarks.forEach((landmarks, index) => {
                     const label = results.multiHandedness[index].label;
                     drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', lineWidth: 1.5, radius: isMobile ? 2 : 4});
-                    
                     if (activeHandLabel === null) activeHandLabel = label;
                     if (label === activeHandLabel) h1 = landmarks;
                     else h2 = landmarks;
@@ -131,51 +122,41 @@
                     
                     if (distToFist > 0.18) {
                         earthGroup.visible = true;
-                        status.innerText = "BIOMETRIC LOCK: 100%";
-                        
-                        // Recalculate aspect in case of rotation
-                        const currentVisWidth = visibleHeight * (window.innerWidth / window.innerHeight);
-                        const tx = (mid.x - 0.5) * -currentVisWidth;
+                        const curVisWidth = visibleHeight * (window.innerWidth / window.innerHeight);
+                        const tx = (mid.x - 0.5) * -curVisWidth;
                         const ty = (mid.y - 0.5) * -visibleHeight;
                         
-                        // Apply mobile-aware lift and responsive scaling
-                        earthGroup.position.lerp(new THREE.Vector3(tx, ty + (isMobile ? 2.0 : 3.0), 0), 0.15);
+                        // Vertical Lift: Reduced on mobile so it doesn't leave the screen top
+                        const lift = isMobile ? 1.8 : 3.0;
+                        earthGroup.position.lerp(new THREE.Vector3(tx, ty + lift, 0), 0.15);
                         
-                        // Force Earth to fit mobile screen ratio
+                        // Default scaling to the "Base Scale" calculated on resize
                         if (!isResizeMode) {
-                            earthGroup.scale.lerp(new THREE.Vector3(responsiveMultiplier, responsiveMultiplier, responsiveMultiplier), 0.1);
+                            earthGroup.scale.lerp(new THREE.Vector3(baseScale, baseScale, baseScale), 0.1);
                         }
-                    } else {
-                        earthGroup.visible = false;
-                        status.innerText = "ANCHOR FIST: STANDBY";
-                    }
+                    } else { earthGroup.visible = false; }
                 }
 
                 if (h2 && earthGroup.visible) {
                     const thumbTip = h2[4], indexTip = h2[8], mid2 = h2[9];
                     const rawDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
                     
-                    if (rawDist < 0.05) {
+                    if (rawDist < 0.04) {
                         if (pinchStartTime === null) pinchStartTime = Date.now();
                         if (Date.now() - pinchStartTime > 1000) {
                             isResizeMode = true;
                             resizeUI.style.display = 'block';
                         }
-                    } else if (!isResizeMode) {
-                        pinchStartTime = null;
-                    }
+                    } else if (!isResizeMode) pinchStartTime = null;
 
                     if (isResizeMode) {
-                        // Resizing is relative to the responsive multiplier
-                        let scaleFactor = isMobile ? 12.0 : 10.0;
-                        currentScale = THREE.MathUtils.lerp(currentScale, rawDist * scaleFactor, 0.1);
-                        const finalS = THREE.MathUtils.clamp(currentScale, 0.2, 4.0);
-                        earthGroup.scale.setScalar(finalS);
+                        currentScale = THREE.MathUtils.lerp(currentScale, rawDist * (isMobile ? 12.0 : 10.0), 0.1);
+                        earthGroup.scale.setScalar(THREE.MathUtils.clamp(currentScale, 0.2, 4.0));
                     } else {
                         const curX = mid2.x;
                         if (prevHand2X !== null) {
                             const deltaX = curX - prevHand2X;
-                            if (Math.abs(deltaX) > 0.015) rotationMomentum += deltaX * (isMobile ? 0.6 : 0.45);
+                            if (Math.abs(deltaX) > 0.015) rotationMomentum += deltaX * 0.45;
                         }
                         prevHand2X = curX;
                     }
@@ -185,35 +166,28 @@
                     resizeUI.style.display = 'none';
                     prevHand2X = null;
                 }
-            } else {
-                earthGroup.visible = false;
-                activeHandLabel = null;
-                status.innerText = "SEARCHING FOR BIOMETRICS...";
-            }
+            } else { earthGroup.visible = false; activeHandLabel = null; }
             canvasCtx.restore();
         }
 
         const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
         hands.setOptions({ 
             maxNumHands: 2, 
-            modelComplexity: isMobile ? 0 : 1, // Use simpler model on mobile for speed
-            minDetectionConfidence: 0.75, 
-            minTrackingConfidence: 0.75 
+            modelComplexity: isMobile ? 0 : 1, // Simpler model for mobile performance
+            minDetectionConfidence: 0.8, 
+            minTrackingConfidence: 0.8 
         });
         hands.onResults(onResults);
 
         new Camera(videoElement, {
-            onFrame: async () => { 
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-                await hands.send({image: videoElement}); 
-            }, width: 1280, height: 720
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 1280, height: 720
         }).start();
 
         function animate() {
             requestAnimationFrame(animate);
             earth.rotation.y += rotationMomentum;
-            clouds.rotation.y += rotationMomentum * 1.1;
+            clouds.rotation.y += rotationMomentum * 1.15;
             rotationMomentum *= 0.985;
             renderer.render(scene, camera);
         }
