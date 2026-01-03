@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JARVIS: Hyper-Realistic Earth</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; }
+        #input_video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
+        #biometric_canvas { position: absolute; width: 100vw; height: 100vh; z-index: 5; transform: scaleX(-1); pointer-events: none; }
+        #three_canvas { position: absolute; top: 0; left: 0; z-index: 10; pointer-events: none; }
+        #status { 
+            position: absolute; top: 40px; left: 40px; z-index: 100;
+            color: #00f0ff; font-family: 'Courier New', monospace; font-weight: bold;
+            text-shadow: 0 0 20px #00f0ff; border-left: 5px solid #00f0ff; padding-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">INITIATING HYPER-REALISTIC RENDER...</div>
+    <video id="input_video" autoplay playsinline></video>
+    <canvas id="biometric_canvas"></canvas>
+    <canvas id="three_canvas"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        const status = document.getElementById('status');
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('biometric_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        
+        let rotationMomentum = 0.0012;
+        let prevHand2X = null;
+        let activeHandLabel = null; 
+
+        // 1. ENGINE SETUP (High Performance)
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas: document.getElementById('three_canvas'),
+            antialias: true, 
+            alpha: true,
+            powerPreference: "high-performance"
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio > 1 ? 2 : 1);
+        renderer.outputEncoding = THREE.sRGBEncoding; // Better color accuracy
+
+        const vFOV = (camera.fov * Math.PI) / 180;
+        const visibleHeight = 2 * Math.tan(vFOV / 2) * 10;
+        const visibleWidth = visibleHeight * camera.aspect;
+
+        // 2. HYPER-REALISTIC GLOBE ASSETS
+        const earthGroup = new THREE.Group();
+        earthGroup.visible = false; 
+        scene.add(earthGroup);
+
+        const loader = new THREE.TextureLoader();
+        const geometry = new THREE.SphereGeometry(2.4, 256, 256); // Max Smoothness
+
+        // Layer 1: The Surface (Color + Specular + BUMP MAP for shadows/depth)
+        const earthMat = new THREE.MeshPhongMaterial({ 
+            map: loader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'),
+            specularMap: loader.load('https://threejs.org/examples/textures/planets/earth_specular_2048.jpg'),
+            bumpMap: loader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg'), // ADDS TERRAIN DEPTH
+            bumpScale: 0.05, // Controls how "bumpy" the mountains look
+            shininess: 40 // Crisper ocean reflections
+        });
+        const earth = new THREE.Mesh(geometry, earthMat);
+        earthGroup.add(earth);
+
+        // Layer 2: Moving Clouds
+        const cloudMat = new THREE.MeshPhongMaterial({
+            map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'),
+            transparent: true, 
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        });
+        const clouds = new THREE.Mesh(new THREE.SphereGeometry(2.43, 128, 128), cloudMat);
+        earthGroup.add(clouds);
+
+        // (Atmosphere Halo Removed as requested)
+
+        // Lighting Setup for Strong Shadows
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3)); // Darker shadows
+        const sun = new THREE.DirectionalLight(0xffffff, 1.8); // Brighter sun for contrast
+        sun.position.set(5, 3, 5); // Positioned to cast good shadows across continents
+        scene.add(sun);
+        camera.position.z = 10;
+
+        // 3. BIOMETRIC LOGIC (High Lift & Lock)
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                let h1 = null, h2 = null;
+
+                // LOCK MECHANISM
+                results.multiHandLandmarks.forEach((landmarks, index) => {
+                    const label = results.multiHandedness[index].label;
+                    drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', lineWidth: 2, radius: 4});
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00f0ff', lineWidth: 1});
+                    
+                    if (activeHandLabel === null) activeHandLabel = label;
+                    if (label === activeHandLabel) h1 = landmarks;
+                    else h2 = landmarks;
+                });
+
+                // ANCHOR (H1)
+                if (h1) {
+                    const wrist = h1[0];
+                    const indexTip = h1[8];
+                    const middleMCP = h1[9];
+                    
+                    // Fist Gesture Logic
+                    const distToFist = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y);
+                    const isFist = distToFist < 0.16;
+
+                    if (!isFist) {
+                        earthGroup.visible = true;
+                        status.innerText = "BIOMETRIC LOCK: STABLE";
+                        const tx = (middleMCP.x - 0.5) * -visibleWidth;
+                        const ty = (middleMCP.y - 0.5) * -visibleHeight;
+                        
+                        // INCREASED LIFT: +4.0 offset for much higher floating
+                        earthGroup.position.lerp(new THREE.Vector3(tx, ty + 4.0, 0), 0.15);
+                    } else {
+                        earthGroup.visible = false;
+                        status.innerText = "ANCHOR FIST: STANDBY";
+                    }
+                }
+
+                // CONTROLLER (H2)
+                if (h2 && earthGroup.visible) {
+                    const currentX = h2[9].x;
+                    if (prevHand2X !== null) {
+                        const deltaX = currentX - prevHand2X;
+                        if (Math.abs(deltaX) > 0.005) rotationMomentum += deltaX * 0.15;
+                    }
+                    prevHand2X = currentX;
+                    status.innerText = "SCROLLING ACTIVE";
+                } else {
+                    prevHand2X = null;
+                }
+            } else {
+                earthGroup.visible = false;
+                activeHandLabel = null;
+                status.innerText = "SEARCHING FOR BIOMETRICS...";
+            }
+            canvasCtx.restore();
+        }
+
+        const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.85, minTrackingConfidence: 0.85 });
+        hands.onResults(onResults);
+
+        new Camera(videoElement, {
+            onFrame: async () => { 
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                await hands.send({image: videoElement}); 
+            },
+            width: 1280, height: 720
+        }).start();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            earth.rotation.y += rotationMomentum;
+            clouds.rotation.y += rotationMomentum * 1.12; 
+            rotationMomentum *= 0.985; 
+            renderer.render(scene, camera);
+        }
+        animate();
+        
+        // Resize handler for perfect aspect ratio
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
