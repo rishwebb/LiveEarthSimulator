@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS: Mobile-Optimized Apex</title>
+    <title>JARVIS: Celestial Apex</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
         #input_video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
@@ -11,8 +11,8 @@
         #three_canvas { position: absolute; top: 0; left: 0; z-index: 10; pointer-events: none; }
         #status { 
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            color: #00f0ff; font-family: 'Courier New', monospace; font-size: 12px;
-            text-shadow: 0 0 10px #00f0ff; border-left: 3px solid #00f0ff; padding-left: 10px;
+            color: #00f0ff; font-family: 'Courier New', monospace; font-weight: bold;
+            text-shadow: 0 0 10px #00f0ff; border-left: 3px solid #00f0ff; padding-left: 10px; font-size: 12px;
         }
         #resize_ui {
             position: absolute; top: 20px; right: 20px; z-index: 100;
@@ -23,7 +23,7 @@
     </style>
 </head>
 <body>
-    <div id="status">INITIATING MOBILE-OPTIMIZED AR...</div>
+    <div id="status">INITIATING CELESTIAL OVERRIDE...</div>
     <div id="resize_ui">RESIZE ACTIVATED</div>
     <video id="input_video" autoplay playsinline></video>
     <canvas id="biometric_canvas"></canvas>
@@ -47,8 +47,9 @@
         let pinchStartTime = null;
         let isResizeMode = false;
         let currentScale = 1.0;
+        let sunAngle = 0; 
 
-        // 1. DYNAMIC MOBILE ENGINE
+        // 1. ENGINE SETUP (Responsive)
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ 
@@ -62,11 +63,8 @@
             renderer.setSize(w, h);
             camera.aspect = w / h;
             camera.updateProjectionMatrix();
-
-            // --- MOBILE SIZE FIX ---
-            // If screen is taller than wide, reduce the Earth's base scale to fit
             window.isMobile = w < h;
-            window.baseScale = isMobile ? 0.65 : 1.0; 
+            window.baseScale = isMobile ? 0.60 : 1.0; // Responsive Earth size
         }
         updateScreen();
         window.addEventListener('resize', updateScreen);
@@ -74,34 +72,66 @@
         const vFOV = (camera.fov * Math.PI) / 180;
         const visibleHeight = 2 * Math.tan(vFOV / 2) * 10;
 
-        // 2. ULTRA-HD ASSETS
+        // 2. CELESTIAL ASSETS (Ultra Graphics)
         const earthGroup = new THREE.Group();
         earthGroup.visible = false; 
         scene.add(earthGroup);
 
         const loader = new THREE.TextureLoader();
-        const earthMat = new THREE.MeshPhongMaterial({ 
-            map: loader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'),
-            specularMap: loader.load('https://threejs.org/examples/textures/planets/earth_specular_2048.jpg'),
-            bumpMap: loader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg'),
-            bumpScale: 0.08, shininess: 50 
+        
+        // --- SHADER: Day/Night Blend ---
+        const earthShaderMat = new THREE.ShaderMaterial({
+            uniforms: {
+                dayTex: { value: loader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg') },
+                nightTex: { value: loader.load('https://threejs.org/examples/textures/planets/earth_night_2048.jpg') },
+                sunDir: { value: new THREE.Vector3(1, 0.5, 1).normalize() } 
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                void main() {
+                    vUv = uv;
+                    vNormal = normalize(normalMatrix * normal);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D dayTex;
+                uniform sampler2D nightTex;
+                uniform vec3 sunDir;
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                void main() {
+                    vec3 dayColor = texture2D(dayTex, vUv).rgb;
+                    vec3 nightColor = texture2D(nightTex, vUv).rgb;
+                    float intensity = dot(vNormal, sunDir);
+                    float mixAmount = smoothstep(-0.2, 0.2, intensity);
+                    gl_FragColor = vec4(mix(nightColor, dayColor, mixAmount), 1.0);
+                }
+            `
         });
-        const earth = new THREE.Mesh(new THREE.SphereGeometry(2.3, 128, 128), earthMat);
+
+        const earth = new THREE.Mesh(new THREE.SphereGeometry(2.4, 256, 256), earthShaderMat);
         earthGroup.add(earth);
 
         const clouds = new THREE.Mesh(
-            new THREE.SphereGeometry(2.36, 128, 128),
-            new THREE.MeshPhongMaterial({ map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'), transparent: true, opacity: 0.85 })
+            new THREE.SphereGeometry(2.47, 128, 128),
+            new THREE.MeshPhongMaterial({ map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'), transparent: true, opacity: 0.8 })
         );
         earthGroup.add(clouds);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-        const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-        sun.position.set(5, 3, 5);
-        scene.add(sun);
+        // --- THE MOON ---
+        const moonGroup = new THREE.Group();
+        earthGroup.add(moonGroup);
+        const moonMat = new THREE.MeshBasicMaterial({ map: loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg'), color: 0xffffff });
+        const moon = new THREE.Mesh(new THREE.SphereGeometry(0.55, 64, 64), moonMat);
+        moon.position.set(4.0, 0, 0); 
+        moonGroup.add(moon);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.1));
         camera.position.z = 10;
 
-        // 3. GESTURE LOGIC (Optimized for Screen Ratios)
+        // 3. APEX BIOMETRICS (Glow Finger Tracing)
         function onResults(results) {
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -110,7 +140,13 @@
                 let h1 = null, h2 = null;
                 results.multiHandLandmarks.forEach((landmarks, index) => {
                     const label = results.multiHandedness[index].label;
-                    drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', lineWidth: 1.5, radius: isMobile ? 2 : 4});
+                    
+                    // --- NEON GLOW FINGER TRACING ---
+                    canvasCtx.shadowBlur = 10;
+                    canvasCtx.shadowColor = "#00f0ff";
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00f0ff', lineWidth: 2});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', fillColor: '#00f0ff', radius: isMobile ? 2 : 3});
+                    
                     if (activeHandLabel === null) activeHandLabel = label;
                     if (label === activeHandLabel) h1 = landmarks;
                     else h2 = landmarks;
@@ -119,21 +155,13 @@
                 if (h1) {
                     const wrist = h1[0], indexTip = h1[8], mid = h1[9];
                     const distToFist = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y);
-                    
                     if (distToFist > 0.18) {
                         earthGroup.visible = true;
                         const curVisWidth = visibleHeight * (window.innerWidth / window.innerHeight);
                         const tx = (mid.x - 0.5) * -curVisWidth;
                         const ty = (mid.y - 0.5) * -visibleHeight;
-                        
-                        // Vertical Lift: Reduced on mobile so it doesn't leave the screen top
-                        const lift = isMobile ? 1.8 : 3.0;
-                        earthGroup.position.lerp(new THREE.Vector3(tx, ty + lift, 0), 0.15);
-                        
-                        // Default scaling to the "Base Scale" calculated on resize
-                        if (!isResizeMode) {
-                            earthGroup.scale.lerp(new THREE.Vector3(baseScale, baseScale, baseScale), 0.1);
-                        }
+                        earthGroup.position.lerp(new THREE.Vector3(tx, ty + (isMobile ? 2.5 : 4.5), 0), 0.15);
+                        if (!isResizeMode) earthGroup.scale.lerp(new THREE.Vector3(baseScale, baseScale, baseScale), 0.1);
                     } else { earthGroup.visible = false; }
                 }
 
@@ -141,7 +169,7 @@
                     const thumbTip = h2[4], indexTip = h2[8], mid2 = h2[9];
                     const rawDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
                     
-                    if (rawDist < 0.04) {
+                    if (rawDist < 0.045) {
                         if (pinchStartTime === null) pinchStartTime = Date.now();
                         if (Date.now() - pinchStartTime > 1000) {
                             isResizeMode = true;
@@ -161,9 +189,7 @@
                         prevHand2X = curX;
                     }
                 } else {
-                    isResizeMode = false;
-                    pinchStartTime = null;
-                    resizeUI.style.display = 'none';
+                    isResizeMode = false; pinchStartTime = null; resizeUI.style.display = 'none';
                     prevHand2X = null;
                 }
             } else { earthGroup.visible = false; activeHandLabel = null; }
@@ -171,23 +197,24 @@
         }
 
         const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-        hands.setOptions({ 
-            maxNumHands: 2, 
-            modelComplexity: isMobile ? 0 : 1, // Simpler model for mobile performance
-            minDetectionConfidence: 0.8, 
-            minTrackingConfidence: 0.8 
-        });
+        hands.setOptions({ maxNumHands: 2, modelComplexity: isMobile ? 0 : 1, minDetectionConfidence: 0.8, minTrackingConfidence: 0.8 });
         hands.onResults(onResults);
 
         new Camera(videoElement, {
-            onFrame: async () => { await hands.send({image: videoElement}); },
-            width: 1280, height: 720
+            onFrame: async () => { 
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                await hands.send({image: videoElement}); 
+            }, width: 1280, height: 720
         }).start();
 
         function animate() {
             requestAnimationFrame(animate);
+            sunAngle += 0.003; 
+            earth.material.uniforms.sunDir.value.set(Math.sin(sunAngle) * 5, 2, Math.cos(sunAngle) * 5).normalize();
             earth.rotation.y += rotationMomentum;
             clouds.rotation.y += rotationMomentum * 1.15;
+            moonGroup.rotation.y += rotationMomentum * 2.0; 
             rotationMomentum *= 0.985;
             renderer.render(scene, camera);
         }
