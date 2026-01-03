@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS: Cyber-HUD AR</title>
+    <title>JARVIS: Moving Clouds Earth</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #input_video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
@@ -22,7 +22,7 @@
     </style>
 </head>
 <body>
-    <div id="status">INITIATING CYBER_HUD...</div>
+    <div id="status">INITIATING ATMOSPHERIC_DRIFT...</div>
     <div id="resize_ui">MANUAL_SCALE_ACTIVE</div>
     <video id="input_video" autoplay playsinline></video>
     <canvas id="biometric_canvas"></canvas>
@@ -56,46 +56,60 @@
             antialias: true, alpha: true
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio > 1 ? 2 : 1);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
         const vFOV = (camera.fov * Math.PI) / 180;
         const visibleHeight = 2 * Math.tan(vFOV / 2) * 10;
         const visibleWidth = visibleHeight * camera.aspect;
 
-        // 2. EARTH ASSETS
+        // 2. REALISTIC EARTH ASSETS
         const earthGroup = new THREE.Group();
         earthGroup.visible = false; 
         earthGroup.scale.setScalar(currentScale);
         scene.add(earthGroup);
 
         const loader = new THREE.TextureLoader();
+        const textureAnisotropy = renderer.capabilities.getMaxAnisotropy();
+
+        const loadTexture = (url) => {
+            const tex = loader.load(url);
+            tex.anisotropy = textureAnisotropy;
+            return tex;
+        };
+
+        // Advanced Earth Material with Realistic Water
         const earthMat = new THREE.MeshPhongMaterial({ 
-            map: loader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'),
-            specularMap: loader.load('https://threejs.org/examples/textures/planets/earth_specular_2048.jpg'),
-            bumpMap: loader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg'),
-            bumpScale: 0.08, shininess: 50 
+            map: loadTexture('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'),
+            specularMap: loadTexture('https://threejs.org/examples/textures/planets/earth_specular_2048.jpg'),
+            bumpMap: loadTexture('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg'),
+            bumpScale: 0.12, 
+            shininess: 150,
+            specular: new THREE.Color(0x2244ff) 
         });
-        const earth = new THREE.Mesh(new THREE.SphereGeometry(2.3, 64, 64), earthMat);
+
+        const earth = new THREE.Mesh(new THREE.SphereGeometry(2.3, 128, 128), earthMat);
         earthGroup.add(earth);
 
-        const clouds = new THREE.Mesh(
-            new THREE.SphereGeometry(2.4, 64, 64),
-            new THREE.MeshPhongMaterial({ map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'), transparent: true, opacity: 0.4 })
-        );
+        // Enhanced Clouds
+        const cloudMat = new THREE.MeshPhongMaterial({ 
+            map: loadTexture('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'), 
+            transparent: true, 
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending
+        });
+        const clouds = new THREE.Mesh(new THREE.SphereGeometry(2.35, 128, 128), cloudMat);
         earthGroup.add(clouds);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-        const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-        sun.position.set(5, 3, 5);
+        scene.add(new THREE.AmbientLight(0x333333, 1.0));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+        sun.position.set(5, 2, 5); 
         scene.add(sun);
         camera.position.z = 10;
 
-        // 3. CYBER-HUD DRAWING FUNCTION
+        // 3. CYBER-HUD DRAWING 
         function drawCyberHand(ctx, landmarks) {
             ctx.shadowBlur = 10;
             ctx.shadowColor = "#00f0ff";
-            
-            // Draw hacking link-lines
             ctx.beginPath();
             ctx.strokeStyle = "rgba(0, 240, 255, 0.4)";
             ctx.lineWidth = 1;
@@ -105,26 +119,18 @@
             });
             ctx.stroke();
 
-            // Draw technical node points
             landmarks.forEach((pt, i) => {
                 const x = pt.x * canvasElement.width;
                 const y = pt.y * canvasElement.height;
-                
-                // Technical Crosshair for tips
                 if ([4, 8, 12, 16, 20].includes(i)) {
                     ctx.strokeStyle = "#00f0ff";
                     ctx.strokeRect(x - 5, y - 5, 10, 10);
-                    ctx.beginPath();
-                    ctx.moveTo(x - 8, y); ctx.lineTo(x + 8, y);
-                    ctx.moveTo(x, y - 8); ctx.lineTo(x, y + 8);
-                    ctx.stroke();
                 } else {
                     ctx.fillStyle = "#fff";
                     ctx.fillRect(x - 2, y - 2, 4, 4);
                 }
             });
 
-            // Wrist HUD Ring
             const wrist = landmarks[0];
             const wx = wrist.x * canvasElement.width;
             const wy = wrist.y * canvasElement.height;
@@ -135,11 +141,9 @@
             ctx.stroke();
             ctx.setLineDash([]);
             
-            // Dynamic Data Label
             ctx.fillStyle = "#00f0ff";
             ctx.font = "10px 'Courier New'";
-            ctx.fillText(`ID_BIO: ${activeHandLabel}`, wx + 50, wy - 20);
-            ctx.fillText(`X:${wrist.x.toFixed(2)} Y:${wrist.y.toFixed(2)}`, wx + 50, wy - 5);
+            ctx.fillText(`BIO_TRACK_ACTIVE`, wx + 50, wy - 20);
             ctx.shadowBlur = 0;
         }
 
@@ -153,7 +157,6 @@
                 results.multiHandLandmarks.forEach((landmarks, index) => {
                     const label = results.multiHandedness[index].label;
                     drawCyberHand(canvasCtx, landmarks);
-                    
                     if (activeHandLabel === null) activeHandLabel = label;
                     if (label === activeHandLabel) h1 = landmarks;
                     else h2 = landmarks;
@@ -165,11 +168,9 @@
                     
                     if (distToFist > 0.18) {
                         earthGroup.visible = true;
-                        status.innerText = "BIO_LINK: STABLE";
+                        status.innerText = "BIO_LINK: STABLE (CLOUDS_ACTIVE)";
                         const tx = (mid.x - 0.5) * -visibleWidth;
                         const ty = (mid.y - 0.5) * -visibleHeight;
-                        
-                        // Mobile-Specific Offset (Higher in air for mobile)
                         const yOffset = isMobile ? 3.5 : 3.0;
                         earthGroup.position.lerp(new THREE.Vector3(tx, ty + yOffset, 0), 0.15);
                     } else {
@@ -206,7 +207,6 @@
                     pinchStartTime = null;
                     resizeUI.style.display = 'none';
                     prevHand2X = null;
-                    // Auto-return to mobile/pc default scale
                     const targetScale = isMobile ? 0.45 : 1.0;
                     earthGroup.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.08);
                 }
@@ -231,12 +231,25 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            
+            // Apply user interaction spin
             earth.rotation.y += rotationMomentum;
-            clouds.rotation.y += rotationMomentum * 1.1;
-            rotationMomentum *= 0.98;
+            clouds.rotation.y += rotationMomentum * 1.15;
+
+            // >>> INDEPENDENT CLOUD MOVEMENT <<<
+            // Adds a constant slow drift to the clouds regardless of user input
+            clouds.rotation.y += 0.0004; 
+            
+            rotationMomentum *= 0.985;
             renderer.render(scene, camera);
         }
         animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
