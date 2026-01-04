@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracking Earth - Rishav</title>
+    <title>Tracking Earth - Precision Control</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #input_video { position: absolute; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
@@ -48,12 +48,15 @@
         let isResizeMode = false;
         let currentScale = isMobile ? 0.45 : 1.0; 
 
-        // --- FADE VARIABLES ---
         let targetOpacity = 0;
         let currentOpacity = 0;
 
+        let smoothedPos = new THREE.Vector3(0, 0, 0);
         let fistHoldTimer = null;
         let isFistReady = false;
+        let burstProgress = 0; 
+        const BURST_DURATION = 2000; 
+
         const EARTH_URL = "https://earth.google.com/web/@-48.64301928,-14.31233867,-21725.72900461a,49351592.11928844d,35y,78.17231562h,0t,0r/data=CgRCAggBOgMKATBCAggASg0I____________ARAA?authuser=0";
 
         const scene = new THREE.Scene();
@@ -111,7 +114,7 @@
         scene.add(sun);
         camera.position.z = 10;
 
-        function drawCyberHand(ctx, landmarks) {
+        function drawCyberHand(ctx, landmarks, isH1) {
             ctx.shadowBlur = 10;
             ctx.shadowColor = "#00f0ff";
             ctx.beginPath();
@@ -138,10 +141,20 @@
             const wrist = landmarks[0];
             const wx = wrist.x * canvasElement.width;
             const wy = wrist.y * canvasElement.height;
+            
+            if (isH1 && burstProgress > 0) {
+                ctx.beginPath();
+                ctx.arc(wx, wy, 45, -Math.PI/2, (-Math.PI/2) + (Math.PI * 2 * burstProgress));
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = "#00f0ff";
+                ctx.stroke();
+            }
+
             ctx.beginPath();
             ctx.arc(wx, wy, 40, 0, Math.PI * 2);
             ctx.setLineDash([5, 15]);
-            ctx.strokeStyle = "#00f0ff";
+            ctx.strokeStyle = "rgba(0, 240, 255, 0.6)";
+            ctx.lineWidth = 1;
             ctx.stroke();
             ctx.setLineDash([]);
             
@@ -156,54 +169,72 @@
             
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 let h1 = null, h2 = null;
-                targetOpacity = 1.0; // Trigger Fade In
+                targetOpacity = 1.0; 
 
                 results.multiHandLandmarks.forEach((landmarks, index) => {
                     const label = results.multiHandedness[index].label;
-                    drawCyberHand(canvasCtx, landmarks);
-                    if (activeHandLabel === null) activeHandLabel = label;
-                    if (label === activeHandLabel) h1 = landmarks;
-                    else h2 = landmarks;
+                    const isH1 = (activeHandLabel === null || label === activeHandLabel);
+                    drawCyberHand(canvasCtx, landmarks, isH1);
+                    
+                    if (isH1) {
+                        h1 = landmarks;
+                        activeHandLabel = label;
+                    } else {
+                        h2 = landmarks;
+                    }
                 });
 
                 if (h1) {
-                    const wrist = h1[0], indexTip = h1[8], mid = h1[9];
-                    const distToFist = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y);
-
-                    if (distToFist < 0.15) { 
-                        if (!fistHoldTimer) {
-                            fistHoldTimer = Date.now();
-                            status.innerText = "BIO_SYNC: CHARGING_REDIRECT...";
-                        } else if (Date.now() - fistHoldTimer > 1000) {
+                    const palmCenter = h1[9]; 
+                    
+                    // --- REFINED FIST DETECTION ---
+                    const isFist = h1[8].y > h1[6].y && h1[12].y > h1[10].y && h1[16].y > h1[14].y && h1[20].y > h1[18].y;
+                    const isPalmOpen = h1[8].y < h1[6].y && h1[12].y < h1[10].y && h1[16].y < h1[14].y && h1[20].y < h1[18].y;
+                    
+                    if (isFist) { 
+                        if (!fistHoldTimer) fistHoldTimer = Date.now();
+                        burstProgress = Math.min((Date.now() - fistHoldTimer) / BURST_DURATION, 1);
+                        
+                        if (burstProgress >= 1) {
                             isFistReady = true;
-                            status.innerText = "BIO_SYNC: READY_TO_BURST";
-                        }
-                    } else if (distToFist > 0.25) { 
-                        if (isFistReady) {
-                            status.innerText = "BIO_SYNC: REDIRECTING...";
-                            window.open(EARTH_URL, '_blank');
-                            isFistReady = false;
-                            fistHoldTimer = null;
+                            status.innerText = "BIO_SYNC: READY_TO_BURST (OPEN HAND NOW)";
                         } else {
+                            status.innerText = "BIO_SYNC: CHARGING_REDIRECT...";
+                        }
+                    } else if (isPalmOpen && isFistReady) {
+                        // --- BURST TRIGGERED ONLY ON PALM OPEN AFTER FIST HOLD ---
+                        status.innerText = "BIO_SYNC: BURSTING_REDIRECT!";
+                        window.open(EARTH_URL, '_blank');
+                        isFistReady = false;
+                        fistHoldTimer = null;
+                        burstProgress = 0;
+                    } else {
+                        // If user opens hand before charge is full, reset timer
+                        if (!isFistReady) {
                             fistHoldTimer = null;
-                            isFistReady = false;
+                            burstProgress = 0;
                             status.innerText = "BIO_LINK: STABLE";
                         }
                     }
 
-                    const tx = (mid.x - 0.5) * -visibleWidth;
-                    const ty = (mid.y - 0.5) * -visibleHeight;
+                    const tx = (palmCenter.x - 0.5) * -visibleWidth;
+                    const ty = (palmCenter.y - 0.5) * -visibleHeight;
                     const yOffset = isMobile ? 3.5 : 3.0;
                     
-                    // Reduced LERP factor (0.1) for smoother, less jittery tracking
-                    earthGroup.position.lerp(new THREE.Vector3(tx, ty + yOffset, 0), 0.1);
+                    const targetPos = new THREE.Vector3(tx, ty + yOffset, 0);
+                    if (earthGroup.position.distanceTo(targetPos) > 10) earthGroup.position.copy(targetPos);
+                    earthGroup.position.lerp(targetPos, 0.15);
                 }
 
                 if (h2) {
                     const thumbTip = h2[4], indexTip = h2[8], mid2 = h2[9];
                     const rawDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
                     
-                    if (rawDist < 0.04) {
+                    // --- PINCH-ONLY ZOOM FILTER ---
+                    // Other fingers (Middle, Ring, Pinky) must be extended for pinch to work
+                    const othersExtended = h2[12].y < h2[10].y && h2[16].y < h2[14].y && h2[20].y < h2[18].y;
+
+                    if (rawDist < 0.04 && othersExtended) {
                         if (pinchStartTime === null) pinchStartTime = Date.now();
                         if (Date.now() - pinchStartTime > 800) {
                             isResizeMode = true;
@@ -218,7 +249,7 @@
                         const curX = mid2.x;
                         if (prevHand2X !== null) {
                             const deltaX = curX - prevHand2X;
-                            if (Math.abs(deltaX) > 0.01) rotationMomentum += deltaX * 0.35;
+                            if (Math.abs(deltaX) > 0.005) rotationMomentum += deltaX * 0.4;
                         }
                         prevHand2X = curX;
                     }
@@ -231,9 +262,10 @@
                     earthGroup.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.05);
                 }
             } else {
-                targetOpacity = 0; // Trigger Fade Out
+                targetOpacity = 0; 
                 activeHandLabel = null;
                 fistHoldTimer = null;
+                burstProgress = 0;
                 isFistReady = false;
                 status.innerText = "SYS_SCANNING...";
             }
@@ -241,12 +273,11 @@
 
         const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
         
-        // Increased confidence thresholds to filter out noisy detections
         hands.setOptions({ 
             maxNumHands: 2, 
             modelComplexity: 1, 
-            minDetectionConfidence: 0.9, 
-            minTrackingConfidence: 0.9 
+            minDetectionConfidence: 0.75, 
+            minTrackingConfidence: 0.8 
         });
         hands.onResults(onResults);
 
@@ -260,12 +291,9 @@
 
         function animate() {
             requestAnimationFrame(animate);
-
-            // Smooth Opacity Transition Logic
             currentOpacity = THREE.MathUtils.lerp(currentOpacity, targetOpacity, 0.08);
             earthMat.opacity = currentOpacity;
-            cloudMat.opacity = currentOpacity * 0.5; // Keep clouds at 50% relative to earth
-
+            cloudMat.opacity = currentOpacity * 0.5; 
             earth.rotation.y += rotationMomentum;
             clouds.rotation.y += rotationMomentum * 1.15;
             clouds.rotation.y += 0.0004; 
