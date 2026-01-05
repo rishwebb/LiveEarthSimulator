@@ -187,7 +187,6 @@
                 if (h1) {
                     const palmCenter = h1[9]; 
                     
-                    // --- REFINED FIST DETECTION ---
                     const isFist = h1[8].y > h1[6].y && h1[12].y > h1[10].y && h1[16].y > h1[14].y && h1[20].y > h1[18].y;
                     const isPalmOpen = h1[8].y < h1[6].y && h1[12].y < h1[10].y && h1[16].y < h1[14].y && h1[20].y < h1[18].y;
                     
@@ -202,14 +201,12 @@
                             status.innerText = "BIO_SYNC: CHARGING_REDIRECT...";
                         }
                     } else if (isPalmOpen && isFistReady) {
-                        // --- BURST TRIGGERED ONLY ON PALM OPEN AFTER FIST HOLD ---
                         status.innerText = "BIO_SYNC: BURSTING_REDIRECT!";
                         window.open(EARTH_URL, '_blank');
                         isFistReady = false;
                         fistHoldTimer = null;
                         burstProgress = 0;
                     } else {
-                        // If user opens hand before charge is full, reset timer
                         if (!isFistReady) {
                             fistHoldTimer = null;
                             burstProgress = 0;
@@ -230,8 +227,6 @@
                     const thumbTip = h2[4], indexTip = h2[8], mid2 = h2[9];
                     const rawDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
                     
-                    // --- PINCH-ONLY ZOOM FILTER ---
-                    // Other fingers (Middle, Ring, Pinky) must be extended for pinch to work
                     const othersExtended = h2[12].y < h2[10].y && h2[16].y < h2[14].y && h2[20].y < h2[18].y;
 
                     if (rawDist < 0.04 && othersExtended) {
