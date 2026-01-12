@@ -276,13 +276,38 @@
         });
         hands.onResults(onResults);
 
-        new Camera(videoElement, {
-            onFrame: async () => { 
+        // --- IMPROVED CAMERA HANDLER START ---
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: "user"
+                    }
+                });
+                videoElement.srcObject = stream;
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    requestAnimationFrame(processFrame);
+                };
+            } catch (err) {
+                status.innerText = "ERROR: CAMERA_ACCESS_DENIED";
+                console.error(err);
+            }
+        }
+
+        async function processFrame() {
+            if (videoElement.readyState >= 2) {
                 canvasElement.width = videoElement.videoWidth;
                 canvasElement.height = videoElement.videoHeight;
-                await hands.send({image: videoElement}); 
-            }, width: 1280, height: 720
-        }).start();
+                await hands.send({image: videoElement});
+            }
+            requestAnimationFrame(processFrame);
+        }
+
+        initCamera();
+        // --- IMPROVED CAMERA HANDLER END ---
 
         function animate() {
             requestAnimationFrame(animate);
